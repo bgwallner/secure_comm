@@ -1,0 +1,12 @@
+prefix=/home/bgwallner1975/github/botan_cmac/
+exec_prefix=${prefix}
+libdir=/home/bgwallner1975/github/botan_cmac/lib
+includedir=${prefix}/include/botan-3
+
+Name: Botan
+Description: Crypto and TLS for Modern C++
+Version: 3.10.0
+
+Libs: -L${libdir} -lbotan-3 -fstack-protector -m64 -pthread
+Libs.private: -ldl -lrt
+Cflags: -I${includedir}
