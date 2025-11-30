@@ -91,7 +91,7 @@ int main() {
     //     (static_cast<unsigned int>(kInitialByteBase) + (message_index % kByteModulo)) %
     //     kByteModulo;
     //buffer[0] = static_cast<std::byte>(value);
-    buffer[0] = static_cast<std::byte>(message_index);
+    buffer[kMessageSize-1] = static_cast<std::byte>(message_index);
 
     // Calculate CMAC for the message
     const auto mac = calculate_mac(buffer);
