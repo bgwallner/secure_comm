@@ -8,8 +8,18 @@
 // Shared configuration for both sender and receiver.
 inline constexpr std::string_view kQueueName = "/mq_modern_cpp";
 
-inline constexpr std::size_t kMessageSize = 20;
+// IPC message queue configuration.
+inline constexpr std::size_t kMessageSize = 1024;
 inline constexpr long kMaxMessages = 10;
+
+// Buffer size for periodic messages
+inline constexpr std::size_t kBufferSize = 20;
+
+// Buffer size for cmac
+inline constexpr std::size_t kCmacSize = 16;
+
+// Buffer size for RSA keys
+inline constexpr std::size_t kRsaKeySize = 512;
 
 // Sender-specific configuration.
 inline constexpr int kNumMessagesToSend = 10;
@@ -22,5 +32,15 @@ inline constexpr auto kSendPeriod = std::chrono::milliseconds(3000);
 
 // POSIX queue permissions.
 inline constexpr mode_t kQueuePermissions = 0666;
+
+// Message IDs
+inline constexpr unsigned int kMessageIdRsaPublicKey = 0;
+inline constexpr unsigned int kMessageIdSymKey = 1;
+inline constexpr unsigned int kMessageIdPeriodic = 2;
+
+inline constexpr unsigned int kOK{0};
+inline constexpr unsigned int kNOT_OK{1};
+
+
 
 #endif  // MQ_CONFIG_HPP_

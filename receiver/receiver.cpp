@@ -11,11 +11,11 @@
 #include <string_view>
 #include <iomanip>
 
-void print_buffer_hex(const std::array<std::byte, kMessageSize>& buffer) {
+void print_buffer_hex(const std::array<std::byte, kMessageSize>& buffer, size_t received_bytes) {
     std::cout << "0x";
-    for (auto b : buffer) {
+    for (size_t i = 0; i < received_bytes; ++i) {
         std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
-                  << static_cast<unsigned int>(b);
+                  << static_cast<unsigned int>(buffer[i]);
     }
     std::cout << std::dec;  // reset to decimal
 }
@@ -35,18 +35,17 @@ int main() {
         mq_receive(mq, reinterpret_cast<char*>(buffer.data()), buffer.size(),
                    nullptr);
 
-    if (received_bytes >= 0) {
+    if (received_bytes > 0) {
       std::cout << "[Receiver] Received " << received_bytes << " bytes \n";
       std::cout << "The recieved data is: ";
-      print_buffer_hex(buffer);
+      print_buffer_hex(buffer, received_bytes);
       std::cout << "\n";
     } else {
       perror("mq_receive");
-      break;
+      //break;
     }
   }
 
   mq_close(mq);
   return 0;
 }
-
