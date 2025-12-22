@@ -128,7 +128,6 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     Botan::secure_vector<uint8_t>& symmetric_key) {
 
     // Implementation for receiving symmetric key
-    //std::array<std::byte, kMessageSize> sym_key_buffer{};
     std::array<uint8_t, kMessageSize> sym_key_buffer{};
 
     unsigned int msg_prio;
@@ -160,20 +159,57 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     return kOK;
 }
 
-int main() {
-  MqUnlinker unlinker(kQueueName);
+int setup_sender_communication(mqd_t& mq) {
 
+  MqUnlinker unlinker(kSenderQueue);
   mq_attr queue_attr{};
   queue_attr.mq_flags = 0;
   queue_attr.mq_maxmsg = kMaxMessages;
   queue_attr.mq_msgsize = kMessageSize;
 
-  mqd_t mq =
-      mq_open(kQueueName.data(), O_CREAT | O_WRONLY, kQueuePermissions, &queue_attr);
-  if (mq == static_cast<mqd_t>(-1)) {
-    perror("mq_open (sender)");
-    return kNOT_OK;
+  mq =
+    mq_open(kSenderQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    if (mq == static_cast<mqd_t>(-1)) {
+      perror("mq_open - queue for sending could not open");
+      return kNOT_OK;
+    }
+    return kOK;
+}
+
+int setup_receiver_communication(mqd_t& mq) {
+
+  MqUnlinker unlinker(kReceiverQueue);
+  mq_attr queue_attr{};
+  queue_attr.mq_flags = 0;
+  queue_attr.mq_maxmsg = kMaxMessages;
+  queue_attr.mq_msgsize = kMessageSize;
+
+  mq =
+    mq_open(kReceiverQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    if (mq == static_cast<mqd_t>(-1)) {
+      perror("mq_open - queue for receiving could not open");
+      return kNOT_OK;
+    }
+    return kOK;
+}
+
+int main() {
+
+  // Setup queue for sending
+  mqd_t mq;
+  if (setup_sender_communication(mq) != kOK) {
+      return kNOT_OK;
   }
+
+  // Open queue for reading
+  mqd_t receiver_mq;
+  if (setup_receiver_communication(receiver_mq) != kOK) {
+      return kNOT_OK;
+  }
+
+    // Give receiver time to set up
+  std::cout << "Allow sender to set up...\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(10000));
     
   Botan::AutoSeeded_RNG rng;
 
@@ -193,15 +229,17 @@ int main() {
   unsigned int message_id{kMessageIdRsaPublicKey};
   unsigned int status{kNOT_OK};
   switch(message_id) {
-      case 0:
+      case kMessageIdRsaPublicKey:
           std::cout << "Send public key.\n";
           status = send_public_key(mq, public_key);
           message_id = kMessageIdSymKey;
-      case 1:
+          [[fallthrough]];
+      case kMessageIdSymKey:
           std::cout << "Wait for symmetric key.\n";
-          receive_symmetric_key(mq, private_key, symmetric_key);
+          receive_symmetric_key(receiver_mq, private_key, symmetric_key);
           message_id = kMessageIdPeriodic;
-      case 2:
+          [[fallthrough]];
+      case kMessageIdPeriodic:
           std::cout << "Send periodic messages.\n";
           status = send_periodic_message(mq, symmetric_key);
           break;
@@ -211,6 +249,7 @@ int main() {
   }
 
   mq_close(mq);
+  mq_close(receiver_mq);
 
   // Don't close terminal right away
   std::cout << "Sender done. Press Enter to exit.";
