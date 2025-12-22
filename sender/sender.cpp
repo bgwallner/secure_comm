@@ -7,6 +7,7 @@
 
 #include <botan/pubkey.h>
 #include <botan/pkcs8.h>
+#include <botan/x509_key.h>
 #include <vector>
 
 #include "common.hpp"
@@ -56,7 +57,7 @@ int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
     std::vector<uint8_t> der = public_key.subject_public_key();
 
     if (der.size() > kMessageSize) {
-        std::cerr << "Public key too large for message queue\n";
+        std::cerr << "[Sender]Public key too large for message queue\n";
         return kNOT_OK;
     }
 
@@ -66,7 +67,7 @@ int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
                 0) == -1)
     {
         perror("mq_send");
-        std::cout << "Public key send failed. Press Enter to exit.";
+        std::cout << "[Sender] Public key send failed. Press Enter to exit.";
         std::cin.get();
         return kNOT_OK;
     }
@@ -121,6 +122,7 @@ int send_periodic_message(mqd_t mq, Botan::secure_vector<uint8_t>& symmetric_key
 int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     Botan::secure_vector<uint8_t>& symmetric_key) {
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(40000));
     // Implementation for receiving symmetric key
     std::array<uint8_t, kMessageSize> sym_key_buffer{};
 
@@ -131,7 +133,7 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
 
     if (bytes_received == -1) {
       perror("mq_receive");
-      std::cout << "Symmetric key receive failed. Press Enter to exit.";
+      std::cout << "[Sender]Symmetric key receive failed. Press Enter to exit.";
       std::cin.get();
       return kNOT_OK;
     }
@@ -209,8 +211,8 @@ int main() {
   // Extract public key
   Botan::RSA_PublicKey public_key(private_key);
 
-  std::string private_pem = Botan::PEM_Code::encode(private_key.private_key_bits(), "RSA PRIVATE KEY");
-  std::string public_pem  = Botan::PEM_Code::encode(public_key.public_key_bits(), "RSA PUBLIC KEY");
+  std::string public_pem = Botan::X509::PEM_encode(public_key);
+  std::string private_pem = Botan::X509::PEM_encode(private_key);
 
   std::cout << private_pem << "\n";
   std::cout << public_pem  << "\n";
@@ -220,18 +222,18 @@ int main() {
   unsigned int status{kNOT_OK};
   switch(message_id) {
       case kMessageIdRsaPublicKey:
-          std::cout << "Send public key.\n";
+          std::cout << "[Sender] Send public key.\n";
           status = send_public_key(mq, public_key);
           std::this_thread::sleep_for(std::chrono::milliseconds(3000));
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
-          std::cout << "Wait for symmetric key.\n";
+          std::cout << "[Sender] Wait for symmetric key.\n";
           receive_symmetric_key(receiver_mq, private_key, symmetric_key);
           message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
-          std::cout << "Send periodic messages.\n";
+          std::cout << "[Sender] Send periodic messages.\n";
           status = send_periodic_message(mq, symmetric_key);
           break;
       default:

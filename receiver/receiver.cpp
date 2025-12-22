@@ -88,7 +88,7 @@ int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     }
 
     std::cout << "[Receiver] Received public key (" << received_bytes << " bytes)\n";
-    std::cout << "[Receiver] The received public key raw data is: \n";
+    std::cout << "[Receiver] The received public key raw data: \n";
     print_buffer_hex(pub_key_buffer, received_bytes);
     std::cout << "\n";
     std::this_thread::sleep_for(std::chrono::milliseconds(3000));
@@ -110,6 +110,7 @@ int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
 
     std::string pem = Botan::X509::PEM_encode(*public_key);
     std::cout << "[Receiver] Received RSA Public Key in PEM format:\n";
+    std::cout << "\n";
     std::cout << pem << std::endl;
 
     std::this_thread::sleep_for(std::chrono::milliseconds(3000));
@@ -123,6 +124,7 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     // Generate a random symmetric key (e.g., 16 bytes for AES-128)
     std::vector<uint8_t> symmetric_key(16);
     rng.randomize(symmetric_key.data(), symmetric_key.size());
+    std::cout << "[Receiver] Derived symmetric key:\n";
     print_vector_hex(symmetric_key);
     std::cout << "\n";
 
@@ -130,6 +132,7 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     Botan::RSA_PublicKey* rsa = dynamic_cast<Botan::RSA_PublicKey*>(public_key.get());
     Botan::PK_Encryptor_EME encryptor(*rsa, rng, "EME1(SHA-256)");
     std::vector<uint8_t> encrypted_key = encryptor.encrypt(symmetric_key, rng);
+    std::cout << "[Receiver] Encrypted symmetric key with RSA public key:\n";
     print_vector_hex(encrypted_key);
     std::cout << "\n";
 
@@ -140,8 +143,15 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     mac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
     mac->final();
     std::string mac_hex = Botan::hex_encode(mac->final());
-    std::cout << "[Receiver] Calculated CMAC of the encrypted symmetric key.\n";
+    std::cout << "[Receiver] Calculated CMAC of the encrypted symmetric key:\n";
     std::cout << "[Receiver] 0x" << mac_hex;
+    std::cout << "\n";
+
+    // Concatenate CMAC to the encrypted key
+    const auto mac_output = mac->final();
+    encrypted_key.insert(encrypted_key.end(), mac_output.begin(), mac_output.end());
+    std::cout << "[Receiver] Encrypted symmetric key with appended CMAC:\n";
+    print_vector_hex(encrypted_key);
     std::cout << "\n";
 
     // Send the encrypted symmetric key via message queue
@@ -201,17 +211,17 @@ int main() {
   std::unique_ptr<Botan::Public_Key> public_key;
   switch(message_id) {
       case kMessageIdRsaPublicKey:
-          std::cout << "[Receiver] Receive public key.\n";
+          std::cout << "[Receiver] Receive public key ->\n";
           status = get_public_key(mq, public_key);
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
-          std::cout << "[Receiver] Send symmetric key.\n";
+          std::cout << "[Receiver] Send symmetric key ->\n";
           status = send_symmetric_key(sender_mq, public_key);
           message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
-          std::cout << "[Receiver] Receive periodic messages.\n";
+          std::cout << "[Receiver] Receive periodic messages ->\n";
           status = receive_periodic_messages(mq);
           break;
       default:
