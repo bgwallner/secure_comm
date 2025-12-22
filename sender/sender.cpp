@@ -50,37 +50,31 @@ void print_buffer_hex(const std::array<std::byte, kBufferSize>& buffer) {
     std::cout << std::dec;  // reset to decimal
 }
 
-int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key) {
-        
-  std::array<std::byte, kRsaKeySize> rsa_buffer{};
-  rsa_buffer.fill(kDefaultFillByte);
-  std::span<const std::byte> span = rsa_buffer;
+int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
+{
+    // Get X.509 SubjectPublicKeyInfo DER
+    std::vector<uint8_t> der = public_key.subject_public_key();
 
- 
-  // PEM encode (just for demonstration; in practice, consider DER for binary transmission)
-  std::string public_pem  = Botan::PEM_Code::encode(public_key.public_key_bits(), "RSA PUBLIC KEY");
+    if (der.size() > kMessageSize) {
+        std::cerr << "Public key too large for message queue\n";
+        return kNOT_OK;
+    }
 
-  const auto pub_key_bytes = public_pem.size();
-  if (pub_key_bytes > kMessageSize) {
-    std::cerr << "Public key size exceeds message size. Press Enter to exit.\n";
-    std::cin.get();
-    return kNOT_OK;
+    if (mq_send(mq,
+                reinterpret_cast<const char*>(der.data()),
+                der.size(),
+                0) == -1)
+    {
+        perror("mq_send");
+        std::cout << "Public key send failed. Press Enter to exit.";
+        std::cin.get();
+        return kNOT_OK;
+    }
 
-  }
-  std::memcpy(rsa_buffer.data(), public_pem.data(), pub_key_bytes);
-
-  const int send_result = mq_send(mq, reinterpret_cast<const char*>(rsa_buffer.data()), rsa_buffer.size(), 0);
-
-  if (send_result == -1) {
-    perror("mq_send");
-    std::cout << "Public key send failed. Press Enter to exit.";
-    std::cin.get();
-    return kNOT_OK;
-  }
-
-    std::cout << "[Sender] Sent public key (" << pub_key_bytes << " bytes)\n";
+    std::cout << "[Sender] Sent public key (" << der.size() << " bytes)\n";
     return kOK;
 }
+
 
 int send_periodic_message(mqd_t mq, Botan::secure_vector<uint8_t>& symmetric_key) {
     // Implementation for sending periodic messages
@@ -161,7 +155,6 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
 
 int setup_sender_communication(mqd_t& mq) {
 
-  MqUnlinker unlinker(kSenderQueue);
   mq_attr queue_attr{};
   queue_attr.mq_flags = 0;
   queue_attr.mq_maxmsg = kMaxMessages;
@@ -178,7 +171,6 @@ int setup_sender_communication(mqd_t& mq) {
 
 int setup_receiver_communication(mqd_t& mq) {
 
-  MqUnlinker unlinker(kReceiverQueue);
   mq_attr queue_attr{};
   queue_attr.mq_flags = 0;
   queue_attr.mq_maxmsg = kMaxMessages;
@@ -198,19 +190,17 @@ int main() {
   // Setup queue for sending
   mqd_t mq;
   if (setup_sender_communication(mq) != kOK) {
-      return kNOT_OK;
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    return kNOT_OK;
   }
 
   // Open queue for reading
   mqd_t receiver_mq;
   if (setup_receiver_communication(receiver_mq) != kOK) {
-      return kNOT_OK;
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    return kNOT_OK;
   }
-
-    // Give receiver time to set up
-  std::cout << "Allow sender to set up...\n";
-  std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-    
+   
   Botan::AutoSeeded_RNG rng;
 
   // Generate RSA private key (e.g., 2048 bits)
@@ -232,6 +222,7 @@ int main() {
       case kMessageIdRsaPublicKey:
           std::cout << "Send public key.\n";
           status = send_public_key(mq, public_key);
+          std::this_thread::sleep_for(std::chrono::milliseconds(3000));
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
@@ -247,6 +238,9 @@ int main() {
           std::cout << "Unknown message ID.\n";
           break;
   }
+
+  MqUnlinker unlinkSenderQueue(kSenderQueue);
+  MqUnlinker unlinkReceiverQueue(kReceiverQueue);
 
   mq_close(mq);
   mq_close(receiver_mq);

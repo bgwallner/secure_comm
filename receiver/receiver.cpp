@@ -26,41 +26,38 @@ void print_buffer_hex(const std::array<std::byte, kMessageSize>& buffer, size_t 
                   << static_cast<unsigned int>(buffer[i]);
     }
     std::cout << std::dec;  // reset to decimal
+    std::cout << "\n";
 }
 
 int open_receiver_communication(mqd_t& mq) {
 
-  while(true) {
-    mq = mq_open(kSenderQueue.data(), O_RDWR);
-    if (mq != static_cast<mqd_t>(-1)) {
-        break;  // success
+  mq_attr queue_attr{};
+  queue_attr.mq_flags = 0;
+  queue_attr.mq_maxmsg = kMaxMessages;
+  queue_attr.mq_msgsize = kMessageSize;
+
+  mq =
+    mq_open(kSenderQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    if (mq == static_cast<mqd_t>(-1)) {
+      perror("mq_open - queue for sending could not open");
+      return kNOT_OK;
     }
-    if (errno == ENOENT) {
-        std::cout << "Waiting for sender to create the queue...\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    } else {
-        perror("mq_open - queue for receiving could not open");
-        return kNOT_OK;
-    }
-  }
     return kOK;
 }
 
 int open_sender_communication(mqd_t& mq) {
 
-  while(true) {
-    mq = mq_open(kReceiverQueue.data(), O_RDWR);
-    if (mq != static_cast<mqd_t>(-1)) {
-        break;  // success
+  mq_attr queue_attr{};
+  queue_attr.mq_flags = 0;
+  queue_attr.mq_maxmsg = kMaxMessages;
+  queue_attr.mq_msgsize = kMessageSize;
+
+  mq =
+    mq_open(kReceiverQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    if (mq == static_cast<mqd_t>(-1)) {
+      perror("mq_open - queue for receiving could not open");
+      return kNOT_OK;
     }
-    if (errno == ENOENT) {
-        std::cout << "Waiting for sender to create the queue...\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    } else {
-        perror("mq_open - queue for receiving could not open");
-        return kNOT_OK;
-    }
-  }
     return kOK;
 }
 
@@ -80,25 +77,64 @@ int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
         return kNOT_OK;
     }
 
+    std::cout << "[Receiver] Received public key (" << received_bytes << " bytes)\n";
+    std::cout << "The received public key raw data is: \n";
+    print_buffer_hex(pub_key_buffer, received_bytes);
+    std::cout << "\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
     Botan::DataSource_Memory ds(
         reinterpret_cast<const uint8_t*>(pub_key_buffer.data()),
         received_bytes
     );
 
-    // Load as generic public key
     public_key = Botan::X509::load_key(ds);
 
     // Ensure it is RSA
     auto* rsa = dynamic_cast<Botan::RSA_PublicKey*>(public_key.get());
     if (!rsa) {
         std::cerr << "Received key is not an RSA public key\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
         return kNOT_OK;
     }
 
-    std::cout << "[Receiver] Received public key (" << received_bytes << " bytes)\n";
+    std::string pem = Botan::X509::PEM_encode(*public_key);
+    std::cout << "Received RSA Public Key in PEM format:\n";
+    std::cout << pem << std::endl;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
     return kOK;
 }
 
+int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key) {
+    Botan::AutoSeeded_RNG rng;
+
+    // Generate a random symmetric key (e.g., 16 bytes for AES-128)
+    Botan::secure_vector<uint8_t> symmetric_key(16);
+    rng.randomize(symmetric_key.data(), symmetric_key.size());
+
+    Botan::RSA_PublicKey* rsa = dynamic_cast<Botan::RSA_PublicKey*>(public_key.get());
+    Botan::PK_Encryptor_EME encryptor(*rsa, rng, "EME1(SHA-256)");
+    
+    Botan::secure_vector<uint8_t> encrypted_key = encryptor.encrypt(symmetric_key, rng);
+
+    // Send the encrypted symmetric key via message queue
+    const int send_result = mq_send(
+        mq,
+        reinterpret_cast<const char*>(encrypted_key.data()),
+        encrypted_key.size(),
+        0
+    );
+
+    if (send_result == -1) {
+        perror("mq_send");
+        return kNOT_OK;
+    }
+
+    std::cout << "[Receiver] Sent encrypted symmetric key (" << encrypted_key.size() << " bytes)\n";
+    return kOK;
+}
 
 int receive_periodic_messages(mqd_t mq) {
     std::array<std::byte, kMessageSize> buffer{};
@@ -123,9 +159,6 @@ int receive_periodic_messages(mqd_t mq) {
 
 int main() {
 
-  std::cout << "Allow for queues to be created...\n";
-  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-
   // Open for reading from sender queue
   mqd_t mq;
   if (open_receiver_communication(mq) != kOK) {
@@ -145,10 +178,13 @@ int main() {
       case kMessageIdRsaPublicKey:
           std::cout << "Receive public key.\n";
           status = get_public_key(mq, public_key);
+          std::this_thread::sleep_for(std::chrono::milliseconds(5000));
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
           std::cout << "Send symmetric key.\n";
+          status = send_symmetric_key(sender_mq, public_key);
+          message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
           std::cout << "Receive periodic messages.\n";
