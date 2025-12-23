@@ -35,7 +35,7 @@ class MqUnlinker {
   std::string_view name_;
 };
 
-auto calculate_mac(std::span<const std::byte> data, Botan::secure_vector<uint8_t>& symmetric_key) {
+auto calculate_mac(std::span<const std::byte> data, std::vector<uint8_t>& symmetric_key) {
     auto mac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
     mac->set_key(symmetric_key);
     mac->update(reinterpret_cast<const uint8_t*>(data.data()), data.size());
@@ -49,6 +49,16 @@ void print_buffer_hex(const std::array<std::byte, kBufferSize>& buffer) {
                   << static_cast<unsigned int>(b);
     }
     std::cout << std::dec;  // reset to decimal
+}
+
+void print_vector_hex(const std::vector<uint8_t>& vec) {
+    std::cout << "[Receiver] 0x";
+    for (const auto& byte : vec) {
+        std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+                  << static_cast<unsigned int>(byte);
+    }
+    std::cout << std::dec;  // reset to decimal
+    std::cout << "\n";
 }
 
 int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
@@ -77,7 +87,7 @@ int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
 }
 
 
-int send_periodic_message(mqd_t mq, Botan::secure_vector<uint8_t>& symmetric_key) {
+int send_periodic_message(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
     // Implementation for sending periodic messages
  
     std::array<std::byte, kBufferSize> buffer{};
@@ -120,16 +130,16 @@ int send_periodic_message(mqd_t mq, Botan::secure_vector<uint8_t>& symmetric_key
 
 // Receive, decrypt and return symmetric key
 int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
-    Botan::secure_vector<uint8_t>& symmetric_key) {
+    std::vector<uint8_t>& symmetric_key) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(4000));
     // Implementation for receiving symmetric key
-    std::array<uint8_t, kMessageSize> sym_key_buffer{};
+    std::vector<uint8_t> buffer(kMessageSize);
 
     unsigned int msg_prio;
 
     const ssize_t bytes_received = mq_receive(
-        mq, reinterpret_cast<char*>(sym_key_buffer.data()), sym_key_buffer.size(), &msg_prio);
+        mq, reinterpret_cast<char*>(buffer.data()), buffer.size(), &msg_prio);
 
     if (bytes_received == -1) {
       perror("mq_receive");
@@ -138,18 +148,26 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
       return kNOT_OK;
     }
 
+    std::vector<uint8_t> encrypted_data(bytes_received);
+    std::memcpy(encrypted_data.data(), buffer.data(), bytes_received);
+
+    std::cout << "[Sender] Received symmetric key with appended CMAC (" << bytes_received << " bytes)\n";
+    print_vector_hex(encrypted_data);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80000));
+
     // Decode the RSA encrypted symmetric key using the private key
-    Botan::AutoSeeded_RNG rng;
-    Botan::PK_Decryptor_EME decryptor(
-    private_key,
-    rng,
-    "RSA/EME-OAEP(SHA-256)");
+    // Botan::AutoSeeded_RNG rng;
+    // Botan::PK_Decryptor_EME decryptor(
+    // private_key,
+    // rng,
+    // "RSA/EME-OAEP(SHA-256)");
 
-    symmetric_key = decryptor.decrypt(
-        sym_key_buffer.data(),
-        static_cast<size_t>(bytes_received));
+    // symmetric_key = decryptor.decrypt(
+    //     sym_key_buffer.data(),
+    //     static_cast<size_t>(bytes_received));
 
-    std::fill(sym_key_buffer.begin(), sym_key_buffer.end(), 0);  // Clear sensitive data
+    std::fill(buffer.begin(), buffer.end(), 0);  // Clear sensitive data
 
     std::cout << "[Sender] Received symmetric key (" << symmetric_key.size() << " bytes)\n";
     return kOK;
@@ -222,8 +240,8 @@ int main() {
 
   std::cout << private_pem << "\n";
   std::cout << public_pem  << "\n";
-  
-  Botan::secure_vector<uint8_t> symmetric_key;
+
+  std::vector<uint8_t> symmetric_key;
   unsigned int message_id{kMessageIdRsaPublicKey};
   unsigned int status{kNOT_OK};
   switch(message_id) {
