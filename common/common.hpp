@@ -6,8 +6,8 @@
 #include <string_view>
 
 // Shared configuration for both sender and receiver.
-inline constexpr std::string_view kSenderQueue = "/mq_modern_cpp_sender";
-inline constexpr std::string_view kReceiverQueue = "/mq_modern_cpp_receiver";
+inline constexpr std::string_view kSenderToReceiverQueue = "/mq_sender_to_receiver";
+inline constexpr std::string_view kReceiverToSenderQueue = "/mq_receiver_to_sender";
 
 // IPC message queue configuration.
 inline constexpr std::size_t kMessageSize = 1024;

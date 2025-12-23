@@ -132,7 +132,7 @@ int send_periodic_message(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
 int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     std::vector<uint8_t>& symmetric_key) {
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+    //std::this_thread::sleep_for(std::chrono::milliseconds(4000));
     // Implementation for receiving symmetric key
     std::vector<uint8_t> buffer(kMessageSize);
 
@@ -181,7 +181,7 @@ int setup_sender_communication(mqd_t& mq) {
   queue_attr.mq_msgsize = kMessageSize;
 
   mq =
-    mq_open(kSenderQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    mq_open(kSenderToReceiverQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
     if (mq == static_cast<mqd_t>(-1)) {
       perror("mq_open - queue for sending could not open");
       return kNOT_OK;
@@ -197,7 +197,7 @@ int setup_receiver_communication(mqd_t& mq) {
   queue_attr.mq_msgsize = kMessageSize;
 
   mq =
-    mq_open(kReceiverQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    mq_open(kReceiverToSenderQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
     if (mq == static_cast<mqd_t>(-1)) {
       perror("mq_open - queue for receiving could not open");
       return kNOT_OK;
@@ -208,16 +208,14 @@ int setup_receiver_communication(mqd_t& mq) {
 int main() {
 
   // Setup queue for sending
-  mqd_t mq;
-  if (setup_sender_communication(mq) != kOK) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+  mqd_t mq_sender_to_receiver;
+  if (setup_sender_communication(mq_sender_to_receiver) != kOK) {
     return kNOT_OK;
   }
 
   // Open queue for reading
-  mqd_t receiver_mq;
-  if (setup_receiver_communication(receiver_mq) != kOK) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+  mqd_t mq_receiver_to_sender;
+  if (setup_receiver_communication(mq_receiver_to_sender) != kOK) {
     return kNOT_OK;
   }
 
@@ -247,28 +245,28 @@ int main() {
   switch(message_id) {
       case kMessageIdRsaPublicKey:
           std::cout << "[Sender] Send public key.\n";
-          status = send_public_key(mq, public_key);
+          status = send_public_key(mq_sender_to_receiver, public_key);
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
           std::cout << "[Sender] Wait for symmetric key.\n";
-          receive_symmetric_key(receiver_mq, private_key, symmetric_key);
+          receive_symmetric_key(mq_receiver_to_sender, private_key, symmetric_key);
           message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
           std::cout << "[Sender] Send periodic messages.\n";
-          status = send_periodic_message(mq, symmetric_key);
+          status = send_periodic_message(mq_sender_to_receiver, symmetric_key);
           break;
       default:
           std::cout << "Unknown message ID.\n";
           break;
   }
 
-  MqUnlinker unlinkSenderQueue(kSenderQueue);
-  MqUnlinker unlinkReceiverQueue(kReceiverQueue);
+  MqUnlinker unlinkSenderQueue(kSenderToReceiverQueue);
+  MqUnlinker unlinkReceiverQueue(kReceiverToSenderQueue);
 
-  mq_close(mq);
-  mq_close(receiver_mq);
+  mq_close(mq_sender_to_receiver);
+  mq_close(mq_receiver_to_sender);
 
   // Don't close terminal right away
   std::cout << "Sender done. Press Enter to exit.";

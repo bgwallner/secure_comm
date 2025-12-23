@@ -39,38 +39,6 @@ void print_vector_hex(const std::vector<uint8_t>& vec) {
     std::cout << "\n";
 }
 
-int open_receiver_communication(mqd_t& mq) {
-
-  mq_attr queue_attr{};
-  queue_attr.mq_flags = 0;
-  queue_attr.mq_maxmsg = kMaxMessages;
-  queue_attr.mq_msgsize = kMessageSize;
-
-  mq =
-    mq_open(kSenderQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
-    if (mq == static_cast<mqd_t>(-1)) {
-      perror("mq_open - queue for sending could not open");
-      return kNOT_OK;
-    }
-    return kOK;
-}
-
-int open_sender_communication(mqd_t& mq) {
-
-  mq_attr queue_attr{};
-  queue_attr.mq_flags = 0;
-  queue_attr.mq_maxmsg = kMaxMessages;
-  queue_attr.mq_msgsize = kMessageSize;
-
-  mq =
-    mq_open(kReceiverQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
-    if (mq == static_cast<mqd_t>(-1)) {
-      perror("mq_open - queue for receiving could not open");
-      return kNOT_OK;
-    }
-    return kOK;
-}
-
 int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
 {
     std::array<std::byte, kMessageSize> pub_key_buffer{};
@@ -188,17 +156,49 @@ int receive_periodic_messages(mqd_t mq) {
     return kOK;
 }
 
+int setup_sender_communication(mqd_t& mq) {
+
+  mq_attr queue_attr{};
+  queue_attr.mq_flags = 0;
+  queue_attr.mq_maxmsg = kMaxMessages;
+  queue_attr.mq_msgsize = kMessageSize;
+
+  mq =
+    mq_open(kSenderToReceiverQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    if (mq == static_cast<mqd_t>(-1)) {
+      perror("mq_open - queue for sending could not open");
+      return kNOT_OK;
+    }
+    return kOK;
+}
+
+int setup_receiver_communication(mqd_t& mq) {
+
+  mq_attr queue_attr{};
+  queue_attr.mq_flags = 0;
+  queue_attr.mq_maxmsg = kMaxMessages;
+  queue_attr.mq_msgsize = kMessageSize;
+
+  mq =
+    mq_open(kReceiverToSenderQueue.data(), O_CREAT | O_RDWR, kQueuePermissions, &queue_attr);
+    if (mq == static_cast<mqd_t>(-1)) {
+      perror("mq_open - queue for receiving could not open");
+      return kNOT_OK;
+    }
+    return kOK;
+}
+
 int main() {
 
   // Open for reading from sender queue
-  mqd_t mq;
-  if (open_receiver_communication(mq) != kOK) {
+  mqd_t mq_receiver_to_sender;
+  if (setup_receiver_communication(mq_receiver_to_sender) != kOK) {
       return kNOT_OK;
   }
 
   // Set up queue for sending
-  mqd_t sender_mq;
-  if (open_sender_communication(sender_mq) != kOK) {
+  mqd_t mq_sender_to_receiver;
+  if (setup_sender_communication(mq_sender_to_receiver) != kOK) {
       return kNOT_OK;
   }
 
@@ -215,17 +215,17 @@ int main() {
   switch(message_id) {
       case kMessageIdRsaPublicKey:
           std::cout << "[Receiver] Receive public key ->\n";
-          status = get_public_key(mq, public_key);
+          status = get_public_key(mq_sender_to_receiver, public_key);
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
           std::cout << "[Receiver] Send symmetric key ->\n";
-          status = send_symmetric_key(sender_mq, public_key, symmetric_key);
+          status = send_symmetric_key(mq_receiver_to_sender, public_key, symmetric_key);
           message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
           std::cout << "[Receiver] Receive periodic messages ->\n";
-          status = receive_periodic_messages(mq);
+          status = receive_periodic_messages(mq_sender_to_receiver);
           break;
       default:
           std::cout << "Unknown message ID.\n";
@@ -236,7 +236,7 @@ int main() {
   std::cout << "Receiver done. Press Enter to exit.";
   std::cin.get();
 
-  mq_close(mq);
-  mq_close(sender_mq);
+  mq_close(mq_receiver_to_sender);
+  mq_close(mq_sender_to_receiver);
   return status;
 }
