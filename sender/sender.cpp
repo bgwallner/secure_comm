@@ -122,7 +122,7 @@ int send_periodic_message(mqd_t mq, Botan::secure_vector<uint8_t>& symmetric_key
 int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     Botan::secure_vector<uint8_t>& symmetric_key) {
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(40000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(4000));
     // Implementation for receiving symmetric key
     std::array<uint8_t, kMessageSize> sym_key_buffer{};
 
@@ -138,8 +138,8 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
       return kNOT_OK;
     }
 
-    Botan::AutoSeeded_RNG rng;
     // Decode the RSA encrypted symmetric key using the private key
+    Botan::AutoSeeded_RNG rng;
     Botan::PK_Decryptor_EME decryptor(
     private_key,
     rng,
@@ -202,10 +202,16 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(3000));
     return kNOT_OK;
   }
-   
-  Botan::AutoSeeded_RNG rng;
 
+  std::cout << "[Sender] Starting sender in 5 seconds...\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+  std::cout << "[Sender] Running...\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "\n";
+   
+  
   // Generate RSA private key (e.g., 2048 bits)
+  Botan::AutoSeeded_RNG rng;
   Botan::RSA_PrivateKey private_key(rng, 2048);
 
   // Extract public key
@@ -224,7 +230,6 @@ int main() {
       case kMessageIdRsaPublicKey:
           std::cout << "[Sender] Send public key.\n";
           status = send_public_key(mq, public_key);
-          std::this_thread::sleep_for(std::chrono::milliseconds(3000));
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:

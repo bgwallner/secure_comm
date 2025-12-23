@@ -91,7 +91,6 @@ int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     std::cout << "[Receiver] The received public key raw data: \n";
     print_buffer_hex(pub_key_buffer, received_bytes);
     std::cout << "\n";
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
     Botan::DataSource_Memory ds(
         reinterpret_cast<const uint8_t*>(pub_key_buffer.data()),
@@ -104,7 +103,6 @@ int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     auto* rsa = dynamic_cast<Botan::RSA_PublicKey*>(public_key.get());
     if (!rsa) {
         std::cerr << "[Receiver] Received key is not an RSA public key\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
         return kNOT_OK;
     }
 
@@ -113,16 +111,14 @@ int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     std::cout << "\n";
     std::cout << pem << std::endl;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-
     return kOK;
 }
 
-int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key) {
+int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key, 
+  std::vector<uint8_t>& symmetric_key) {
     Botan::AutoSeeded_RNG rng;
 
     // Generate a random symmetric key (e.g., 16 bytes for AES-128)
-    std::vector<uint8_t> symmetric_key(16);
     rng.randomize(symmetric_key.data(), symmetric_key.size());
     std::cout << "[Receiver] Derived symmetric key:\n";
     print_vector_hex(symmetric_key);
@@ -144,7 +140,7 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
     mac->final();
     std::string mac_hex = Botan::hex_encode(mac->final());
     std::cout << "[Receiver] Calculated CMAC of the encrypted symmetric key:\n";
-    std::cout << "[Receiver] 0x" << mac_hex;
+    std::cout << "[Receiver] 0x" << mac_hex << "\n";
     std::cout << "\n";
 
     // Concatenate CMAC to the encrypted key
@@ -206,9 +202,16 @@ int main() {
       return kNOT_OK;
   }
 
+  std::cout << "[Receiver] Starting receiver in 5 seconds...\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+  std::cout << "[Receiver] Running...\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::cout << "\n";
+
   unsigned int message_id{kMessageIdRsaPublicKey};
   unsigned int status{kNOT_OK};
   std::unique_ptr<Botan::Public_Key> public_key;
+  std::vector<uint8_t> symmetric_key(16);
   switch(message_id) {
       case kMessageIdRsaPublicKey:
           std::cout << "[Receiver] Receive public key ->\n";
@@ -217,7 +220,7 @@ int main() {
           [[fallthrough]];
       case kMessageIdSymKey:
           std::cout << "[Receiver] Send symmetric key ->\n";
-          status = send_symmetric_key(sender_mq, public_key);
+          status = send_symmetric_key(sender_mq, public_key, symmetric_key);
           message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
