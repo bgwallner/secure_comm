@@ -145,9 +145,7 @@ int receive_periodic_messages(mqd_t mq) {
 
         if (received_bytes > 0) {
           std::cout << "[Receiver] Received " << received_bytes << " bytes \n";
-          std::cout << "The recieved data is: ";
           print_buffer_hex(buffer, received_bytes);
-          std::cout << "\n";
         } else {
           perror("mq_receive");
           break;

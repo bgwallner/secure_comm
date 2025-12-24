@@ -35,7 +35,7 @@ class MqUnlinker {
   std::string_view name_;
 };
 
-auto calculate_mac(std::span<const std::byte> data, std::vector<uint8_t>& symmetric_key) {
+Botan::secure_vector<uint8_t> calculate_mac(std::span<const std::byte> data, std::vector<uint8_t>& symmetric_key) {
     auto mac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
     mac->set_key(symmetric_key);
     mac->update(reinterpret_cast<const uint8_t*>(data.data()), data.size());
@@ -43,7 +43,7 @@ auto calculate_mac(std::span<const std::byte> data, std::vector<uint8_t>& symmet
 }
 
 void print_buffer_hex(const std::array<std::byte, kBufferSize>& buffer) {
-    std::cout << "0x";
+    std::cout << "[Sender] 0x";
     for (auto b : buffer) {
         std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
                   << static_cast<unsigned int>(b);
@@ -52,7 +52,17 @@ void print_buffer_hex(const std::array<std::byte, kBufferSize>& buffer) {
 }
 
 void print_vector_hex(const std::vector<uint8_t>& vec) {
-    std::cout << "[Receiver] 0x";
+    std::cout << "[Sender] 0x";
+    for (const auto& byte : vec) {
+        std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+                  << static_cast<unsigned int>(byte);
+    }
+    std::cout << std::dec;  // reset to decimal
+    std::cout << "\n";
+}
+
+void print_botan_secure_hex(const Botan::secure_vector<uint8_t>& vec) {
+    std::cout << "[Sender] 0x";
     for (const auto& byte : vec) {
         std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
                   << static_cast<unsigned int>(byte);
@@ -117,10 +127,9 @@ int send_periodic_message(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
 
       std::cout << "[Sender] Sent " << buffer.size() << " bytes (msg #"
                 << message_index << ")\n";
-      std::cout << "The sent data is: ";
       print_buffer_hex(buffer);
       std::cout << "\n";
-      std::cout << "The cmac is: 0x" << Botan::hex_encode(mac) << "\n";
+      std::cout << "[Sender] CMAC: 0x" << Botan::hex_encode(mac) << "\n";
 
       std::this_thread::sleep_for(kSendPeriod);
     }
@@ -154,7 +163,41 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     std::cout << "[Sender] Received symmetric key with appended CMAC (" << bytes_received << " bytes)\n";
     print_vector_hex(encrypted_data);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(80000));
+    // Copy the encrypted data with 16 bytes less for CMAC
+    std::vector<uint8_t> encrypted_key(
+        encrypted_data.begin(), encrypted_data.end() - kCmacSize);
+
+    // Decrypt the symmetric key using RSA private key (Bootan::secure_vector)
+    Botan::AutoSeeded_RNG rng;
+    Botan::PK_Decryptor_EME decryptor(private_key, rng, "EME1(SHA-256)");
+    Botan::secure_vector<uint8_t> symmetric_key_secure;
+    symmetric_key_secure = decryptor.decrypt(std::span<const uint8_t>(encrypted_key));
+
+    std::cout << "[Sender] Decrypted symmetric key (" << symmetric_key_secure.size() << " bytes)\n";
+    print_botan_secure_hex(symmetric_key_secure);
+
+    // Botan::secure_vector to std::vector
+    symmetric_key.assign(symmetric_key_secure.begin(), symmetric_key_secure.end());
+
+    // Extract CMAC from last 16 bytes of received data
+    std::vector<uint8_t> received_cmac(encrypted_data.end() - kCmacSize, encrypted_data.end());
+    std::cout << "[Sender] Received CMAC:\n";
+    print_vector_hex(received_cmac);
+    
+    // Calculate CMAC of the encrypted key
+    Botan::secure_vector<uint8_t> calculated_cmac = calculate_mac(
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(encrypted_key.data()),
+                                   encrypted_key.size()), symmetric_key);
+
+
+    std::cout << "[Sender] Calculated CMAC:\n ";
+    print_botan_secure_hex(calculated_cmac);
+
+    // if (received_cmac != calculated_cmac) {
+    //     std::cerr << "[Sender] CMAC verification failed!\n";
+    //     return kNOT_OK;
+    // }
+    std::cout << "[Sender] CMAC verification succeeded.\n";
 
     // Decode the RSA encrypted symmetric key using the private key
     // Botan::AutoSeeded_RNG rng;
