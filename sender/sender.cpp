@@ -185,30 +185,27 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     print_vector_hex(received_cmac);
     
     // Calculate CMAC of the encrypted key
-    Botan::secure_vector<uint8_t> calculated_cmac = calculate_mac(
-        std::span<const std::byte>(reinterpret_cast<const std::byte*>(encrypted_key.data()),
-                                   encrypted_key.size()), symmetric_key);
+    auto calculated_cmac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
+    calculated_cmac->set_key(symmetric_key);
+    calculated_cmac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
+    calculated_cmac->final();
 
+    std::cout << "[Sender] Calculated CMAC:\n";
+    print_botan_secure_hex(calculated_cmac->final());
 
-    std::cout << "[Sender] Calculated CMAC:\n ";
-    print_botan_secure_hex(calculated_cmac);
+    // Convert Botan::secure_vector to std::vector for comparison
+    std::vector<uint8_t> calculated_cmac_vec;
+    calculated_cmac_vec.reserve(calculated_cmac->final().size());
+    for (const auto& byte : calculated_cmac->final()) {
+        calculated_cmac_vec.push_back(byte);
+    }
 
-    // if (received_cmac != calculated_cmac) {
-    //     std::cerr << "[Sender] CMAC verification failed!\n";
-    //     return kNOT_OK;
-    // }
+    // Verify CMAC
+    if (received_cmac != calculated_cmac_vec) {
+        std::cerr << "[Sender] CMAC verification failed!\n";
+        return kNOT_OK;
+    }
     std::cout << "[Sender] CMAC verification succeeded.\n";
-
-    // Decode the RSA encrypted symmetric key using the private key
-    // Botan::AutoSeeded_RNG rng;
-    // Botan::PK_Decryptor_EME decryptor(
-    // private_key,
-    // rng,
-    // "RSA/EME-OAEP(SHA-256)");
-
-    // symmetric_key = decryptor.decrypt(
-    //     sym_key_buffer.data(),
-    //     static_cast<size_t>(bytes_received));
 
     std::fill(buffer.begin(), buffer.end(), 0);  // Clear sensitive data
 
@@ -282,7 +279,8 @@ int main() {
   std::cout << private_pem << "\n";
   std::cout << public_pem  << "\n";
 
-  std::vector<uint8_t> symmetric_key;
+  std::vector<uint8_t> symmetric_key(16);
+  rng.randomize(symmetric_key.data(), symmetric_key.size());
   unsigned int message_id{kMessageIdRsaPublicKey};
   unsigned int status{kNOT_OK};
   switch(message_id) {

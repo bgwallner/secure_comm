@@ -39,6 +39,16 @@ void print_vector_hex(const std::vector<uint8_t>& vec) {
     std::cout << "\n";
 }
 
+void print_botan_secure_hex(const Botan::secure_vector<uint8_t>& vec) {
+    std::cout << "[Receiver] 0x";
+    for (const auto& byte : vec) {
+        std::cout << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+                  << static_cast<unsigned int>(byte);
+    }
+    std::cout << std::dec;  // reset to decimal
+    std::cout << "\n";
+}
+
 int get_public_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key)
 {
     std::array<std::byte, kMessageSize> pub_key_buffer{};
@@ -106,9 +116,9 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key,
     mac->set_key(symmetric_key);
     mac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
     mac->final();
-    std::string mac_hex = Botan::hex_encode(mac->final());
+    
     std::cout << "[Receiver] Calculated CMAC of the encrypted symmetric key:\n";
-    std::cout << "[Receiver] 0x" << mac_hex << "\n";
+    print_botan_secure_hex(mac->final());
     std::cout << "\n";
 
     // Concatenate CMAC to the encrypted key
