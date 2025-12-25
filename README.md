@@ -1,5 +1,10 @@
 # secure_comm
 
+Purpose
+-------
+
+Provide an example of IPC between two process using Botan C++ for handling crypto operations.
+
 Hybrid RSA key-transport with symmetric MAC authentication
 ----------------------------------------------------------
 
@@ -10,10 +15,15 @@ A short note on the completeness of example
 
 An attacker having the public key may generate a private key intercepting the key-exchange of symmetric key from receiver to sender. Since data is not sensitive in this case it will only cause receiver to fail with MAC verification.
 
-For the cryptographic primitives the Botan C++ library is used.
+Another solution would be to pre-share public keys. Sender sharing public key for encryption of symmetric key at receiver. Receiver share public key for verifying signature. Receiver sign message with its private key. Sender verify signature with public key from receiver and decrypt message with its own private key. This is very much how key-exchange is done when sending encrypted emails.
+
+Howver, thinking about this an attacker could as well do the same thing as with the MAC and instead sharing its public key to the sender. Thus, we have moved the problem from one place to another.
+
+But how can we then send encrypted emails using the mechanism above for the key-exchange? In contrast to the POSIX message mail-services also provide lower layer security e.g. TLS which makes communication channel secure.
+
+To otherwise solve this problem pre-sharing of symmetric keys in a secure environment is the most feasonable solution.
 
 How to use
 ----------
 
-make clean && make 
-./run.sh
+make clean && make  && ./run.sh
