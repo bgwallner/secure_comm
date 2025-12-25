@@ -148,8 +148,6 @@ int send_periodic_message(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
 int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     std::vector<uint8_t>& symmetric_key) {
 
-    //std::this_thread::sleep_for(std::chrono::milliseconds(4000));
-    // Implementation for receiving symmetric key
     std::vector<uint8_t> buffer(kMessageSize);
 
     unsigned int msg_prio;
@@ -281,7 +279,7 @@ int main() {
   Botan::RSA_PublicKey public_key(private_key);
 
   std::string public_pem = Botan::X509::PEM_encode(public_key);
-  std::string private_pem = Botan::X509::PEM_encode(private_key);
+  std::string private_pem = Botan::PKCS8::PEM_encode(private_key);
 
   std::cout << private_pem << "\n";
   std::cout << public_pem  << "\n";

@@ -145,9 +145,12 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key,
     return kOK;
 }
 
-int receive_periodic_messages(mqd_t mq) {
+int receive_periodic_messages(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
 
     std::vector<uint8_t> buffer(kMessageSize);
+
+    auto calculated_cmac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
+    calculated_cmac->set_key(symmetric_key);
 
     while (true) {
         const ssize_t received_bytes =
@@ -159,6 +162,32 @@ int receive_periodic_messages(mqd_t mq) {
           std::vector<uint8_t> temp_vec(buffer.begin(), buffer.begin() + received_bytes);
           std::cout << "[Receiver] Received " << received_bytes << " bytes \n";
           print_vector_hex(temp_vec);
+
+
+          // Extract received CMAC
+          std::vector<uint8_t> received_cmac(temp_vec.end() - kCmacSize, temp_vec.end());
+          std::cout << "[Receiver] Received CMAC:\n";
+          print_vector_hex(received_cmac);
+
+          // Calculate CMAC of the encrypted key
+          calculated_cmac->update(temp_vec.data(), received_bytes-kCmacSize);
+          Botan::secure_vector<uint8_t> tag = calculated_cmac->final();
+          std::cout << "[Receiver] Calculated CMAC of the received message:\n";
+          print_botan_secure_hex(tag);
+
+          // Convert Botan::secure_vector to std::vector for comparison
+          std::vector<uint8_t> calculated_cmac_vec;
+          calculated_cmac_vec.reserve(tag.size());
+          for (const auto& byte : tag) {
+              calculated_cmac_vec.push_back(byte);
+          }
+
+         // Verify CMAC
+         if (received_cmac != calculated_cmac_vec) {
+             std::cerr << "[Receiver] CMAC verification failed!\n";
+         }
+         std::cout << "[Receiver] CMAC verification succeeded.\n";
+
         } else {
           perror("mq_receive");
           break;
@@ -236,7 +265,7 @@ int main() {
           [[fallthrough]];
       case kMessageIdPeriodic:
           std::cout << "[Receiver] Receive periodic messages ->\n";
-          status = receive_periodic_messages(mq_sender_to_receiver);
+          status = receive_periodic_messages(mq_sender_to_receiver, symmetric_key);
           break;
       default:
           std::cout << "Unknown message ID.\n";
