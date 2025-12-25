@@ -115,14 +115,14 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key,
     auto mac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
     mac->set_key(symmetric_key);
     mac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
-    mac->final();
+    Botan::secure_vector<uint8_t> tag = mac->final();
     
     std::cout << "[Receiver] Calculated CMAC of the encrypted symmetric key:\n";
-    print_botan_secure_hex(mac->final());
+    print_botan_secure_hex(tag);
     std::cout << "\n";
 
     // Concatenate CMAC to the encrypted key
-    const auto mac_output = mac->final();
+    const auto mac_output = std::vector<uint8_t>(tag.begin(), tag.end());
     encrypted_key.insert(encrypted_key.end(), mac_output.begin(), mac_output.end());
     std::cout << "[Receiver] Encrypted symmetric key with appended CMAC:\n";
     print_vector_hex(encrypted_key);
@@ -146,7 +146,8 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key,
 }
 
 int receive_periodic_messages(mqd_t mq) {
-    std::array<std::byte, kMessageSize> buffer{};
+
+    std::vector<uint8_t> buffer(kMessageSize);
 
     while (true) {
         const ssize_t received_bytes =
@@ -154,8 +155,10 @@ int receive_periodic_messages(mqd_t mq) {
                        nullptr);
 
         if (received_bytes > 0) {
+          // Copy to exact size temporary vector
+          std::vector<uint8_t> temp_vec(buffer.begin(), buffer.begin() + received_bytes);
           std::cout << "[Receiver] Received " << received_bytes << " bytes \n";
-          print_buffer_hex(buffer, received_bytes);
+          print_vector_hex(temp_vec);
         } else {
           perror("mq_receive");
           break;

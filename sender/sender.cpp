@@ -100,21 +100,30 @@ int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
 int send_periodic_message(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
     // Implementation for sending periodic messages
  
-    std::array<std::byte, kBufferSize> buffer{};
+    std::vector<uint8_t> buffer(kBufferSize + kCmacSize, 0xFF);
     unsigned int status{kOK};
-
-    buffer.fill(kDefaultFillByte);
-    std::span<const std::byte> span2 = buffer;
+    
+    // Setup MAC
+    auto mac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
+    mac->set_key(symmetric_key);
 
     for (int message_index = 0; message_index < kNumMessagesToSend; ++message_index) {
       // Add a byte counter at the end of the message
-      unsigned int value =
-          (static_cast<unsigned int>(kInitialByteBase) + (message_index % kByteModulo)) %
-          kByteModulo;
-      buffer[kBufferSize-1] = static_cast<std::byte>(value);
+      buffer[19] = static_cast<uint8_t>(message_index % 256);
 
-      // Calculate CMAC for the message
-      const auto mac = calculate_mac(buffer, symmetric_key);
+      // Calculate CMAC of the buffer (first kBufferSize bytes)
+      mac->update(reinterpret_cast<const uint8_t*>(buffer.data()), kBufferSize);
+      Botan::secure_vector<uint8_t> tag = mac->final();
+
+      // Convert Botan::secure_vector to std::vector for appending
+      std::vector<uint8_t> mac_vec;
+      mac_vec.reserve(tag.size());
+      for (const auto& byte : tag) {
+        mac_vec.push_back(byte);
+      }
+
+      // Insert CMAC at the end of the buffer
+      std::memcpy(buffer.data() + kBufferSize, mac_vec.data(), kCmacSize);
 
       const int send_result =
           mq_send(mq, reinterpret_cast<const char*>(buffer.data()), buffer.size(), 0);
@@ -125,11 +134,9 @@ int send_periodic_message(mqd_t mq, std::vector<uint8_t>& symmetric_key) {
         break;
       }
 
-      std::cout << "[Sender] Sent " << buffer.size() << " bytes (msg #"
+      std::cout << "[Sender] Sent " << buffer.size() << " bytes Message + CMAC (msg #"
                 << message_index << ")\n";
-      print_buffer_hex(buffer);
-      std::cout << "\n";
-      std::cout << "[Sender] CMAC: 0x" << Botan::hex_encode(mac) << "\n";
+      print_vector_hex(buffer);
 
       std::this_thread::sleep_for(kSendPeriod);
     }
@@ -188,15 +195,15 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     auto calculated_cmac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
     calculated_cmac->set_key(symmetric_key);
     calculated_cmac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
-    calculated_cmac->final();
+    Botan::secure_vector<uint8_t> tag = calculated_cmac->final();
 
     std::cout << "[Sender] Calculated CMAC:\n";
-    print_botan_secure_hex(calculated_cmac->final());
+    print_botan_secure_hex(tag);
 
     // Convert Botan::secure_vector to std::vector for comparison
     std::vector<uint8_t> calculated_cmac_vec;
-    calculated_cmac_vec.reserve(calculated_cmac->final().size());
-    for (const auto& byte : calculated_cmac->final()) {
+    calculated_cmac_vec.reserve(tag.size());
+    for (const auto& byte : tag) {
         calculated_cmac_vec.push_back(byte);
     }
 
