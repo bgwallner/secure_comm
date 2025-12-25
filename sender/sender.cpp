@@ -1,26 +1,27 @@
-#include <botan/auto_rng.h>
-#include <botan/hex.h>
-#include <botan/mac.h>
+// C system headers
+#include <cstring>
+#include <mqueue.h>
 
-#include <botan/rsa.h>
-#include <botan/pem.h>
-
-#include <botan/pubkey.h>
-#include <botan/pkcs8.h>
-#include <botan/x509_key.h>
-#include <vector>
-
-#include "common.hpp"
-
+// C++ standard library headers
 #include <array>
 #include <chrono>
 #include <cstddef>
-#include <cstring>
 #include <iostream>
-#include <mqueue.h>
 #include <span>
 #include <string_view>
 #include <thread>
+#include <vector>
+
+// Third-party (Botan) headers (alphabetical)
+#include <botan/auto_rng.h>
+#include <botan/mac.h>
+#include <botan/pubkey.h>
+#include <botan/pkcs8.h>
+#include <botan/rsa.h>
+#include <botan/x509_key.h>
+
+// Project headers
+#include "common.hpp"
 
 // Automatically unlinks the message queue when destroyed.
 class MqUnlinker {

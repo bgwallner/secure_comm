@@ -1,23 +1,23 @@
-#include <botan/auto_rng.h>
-#include <botan/hex.h>
-#include <botan/mac.h>
-#include "common.hpp"
+// C system headers
+#include <mqueue.h>
 
-#include <botan/rsa.h>
-#include <botan/pem.h>
-#include <botan/data_src.h>
-#include <botan/pubkey.h>
-#include <botan/pkcs8.h>
-#include <botan/x509_key.h>
-
+// C++ standard library headers
 #include <array>
 #include <cstddef>
-#include <cstring>
-#include <iostream>
-#include <mqueue.h>
-#include <string_view>
 #include <iomanip>
+#include <iostream>
 #include <thread>
+
+// Third-party (Botan) headers
+#include <botan/auto_rng.h>
+#include <botan/data_src.h>
+#include <botan/mac.h>
+#include <botan/pubkey.h>
+#include <botan/rsa.h>
+#include <botan/x509_key.h>
+
+// Project headers
+#include "common.hpp"
 
 void print_buffer_hex(const std::array<std::byte, kMessageSize>& buffer, size_t received_bytes) {
     std::cout << "[Receiver] 0x";
