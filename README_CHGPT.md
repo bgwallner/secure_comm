@@ -77,6 +77,62 @@ Key characteristics:
 ```mermaid
 sequenceDiagram
     participant Sender
+    participant SecureChannel
+    participant Receiver
+
+    Sender->>SecureChannel: KeyExchangeInit
+    SecureChannel->>Receiver: KeyExchangeInit
+
+    Receiver->>SecureChannel: KeyExchangeResponse
+    SecureChannel->>Sender: KeyExchangeResponse
+
+    Sender->>SecureChannel: KeyExchangeConfirmation
+    SecureChannel->>Receiver: KeyExchangeConfirmation
+
+    Note over Sender,Receiver: Shared key material established
+```
+
+---
+--------|--------------|
+| Passive eavesdropping | ✅ |
+| Message injection | ✅ |
+| Message modification | ✅ |
+| Message replay | ✅ |
+
+The attacker **cannot**:
+
+- Observe or interfere with the secure key exchange channel
+- Break cryptographic primitives
+- Compromise Sender or Receiver endpoints
+
+---
+
+## 5. Periodic Communication Phase
+
+### 5.1 Objective
+
+After key exchange, the system enters a periodic communication loop.
+
+Key characteristics:
+
+- Uses **POSIX message queues**
+- No encryption, authentication, or replay protection
+- Intended to demonstrate insecurity
+
+### 5.2 Message Properties
+
+| Property | Value |
+|--------|-------|
+| Confidentiality | ❌ None |
+| Integrity | ❌ None |
+| Authenticity | ❌ None |
+| Replay Protection | ❌ None |
+
+### 5.3 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Sender
     participant InsecureChannel
     participant Receiver
 
@@ -131,7 +187,8 @@ No attack during the periodic phase compromises the secrecy or integrity of the 
 
 For each discrete time interval \( t \):
 
-- \( S ightarrow R : M_t \) over \( C_i \)
+- \( S 
+ightarrow R : M_t \) over \( C_i \)
 
 where \( M_t \) is transmitted in plaintext without cryptographic protection.
 
@@ -153,42 +210,6 @@ The protocol phase explicitly does not claim:
 
 ---
 
-## 5. Periodic Communication Phase
-
-### 5.1 Objective
-
-After key exchange, the system enters a periodic communication loop.
-
-Key characteristics:
-
-- Uses **POSIX message queues**
-- No encryption, authentication, or replay protection
-- Intended to demonstrate insecurity
-
-### 5.2 Message Properties
-
-| Property | Value |
-|--------|-------|
-| Confidentiality | ❌ None |
-| Integrity | ❌ None |
-| Authenticity | ❌ None |
-| Replay Protection | ❌ None |
-
-### 5.3 Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant Sender
-    participant InsecureChannel
-    participant Receiver
-
-    loop Periodic Transmission
-        Sender->>InsecureChannel: ApplicationMessage
-        InsecureChannel->>Receiver: ApplicationMessage
-    end
-```
-
----
 
 ## 6. Security Analysis
 
