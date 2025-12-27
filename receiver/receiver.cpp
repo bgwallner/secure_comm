@@ -110,24 +110,6 @@ int send_symmetric_key(mqd_t mq, std::unique_ptr<Botan::Public_Key>& public_key,
     print_vector_hex(encrypted_key);
     std::cout << "\n";
 
-
-    // Calculate CMAC of the encrypted key
-    auto mac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
-    mac->set_key(symmetric_key);
-    mac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
-    Botan::secure_vector<uint8_t> tag = mac->final();
-    
-    std::cout << "[Receiver] Calculated CMAC of the encrypted symmetric key:\n";
-    print_botan_secure_hex(tag);
-    std::cout << "\n";
-
-    // Concatenate CMAC to the encrypted key
-    const auto mac_output = std::vector<uint8_t>(tag.begin(), tag.end());
-    encrypted_key.insert(encrypted_key.end(), mac_output.begin(), mac_output.end());
-    std::cout << "[Receiver] Encrypted symmetric key with appended CMAC:\n";
-    print_vector_hex(encrypted_key);
-    std::cout << "\n";
-
     // Send the encrypted symmetric key via message queue
     const int send_result = mq_send(
         mq,

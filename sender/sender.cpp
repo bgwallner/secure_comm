@@ -171,7 +171,7 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
 
     // Copy the encrypted data with 16 bytes less for CMAC
     std::vector<uint8_t> encrypted_key(
-        encrypted_data.begin(), encrypted_data.end() - kCmacSize);
+        encrypted_data.begin(), encrypted_data.end());
 
     // Decrypt the symmetric key using RSA private key (Bootan::secure_vector)
     Botan::AutoSeeded_RNG rng;
@@ -184,34 +184,6 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
 
     // Botan::secure_vector to std::vector
     symmetric_key.assign(symmetric_key_secure.begin(), symmetric_key_secure.end());
-
-    // Extract CMAC from last 16 bytes of received data
-    std::vector<uint8_t> received_cmac(encrypted_data.end() - kCmacSize, encrypted_data.end());
-    std::cout << "[Sender] Received CMAC:\n";
-    print_vector_hex(received_cmac);
-    
-    // Calculate CMAC of the encrypted key
-    auto calculated_cmac = Botan::MessageAuthenticationCode::create_or_throw("CMAC(AES-128)");
-    calculated_cmac->set_key(symmetric_key);
-    calculated_cmac->update(reinterpret_cast<const uint8_t*>(encrypted_key.data()), encrypted_key.size());
-    Botan::secure_vector<uint8_t> tag = calculated_cmac->final();
-
-    std::cout << "[Sender] Calculated CMAC:\n";
-    print_botan_secure_hex(tag);
-
-    // Convert Botan::secure_vector to std::vector for comparison
-    std::vector<uint8_t> calculated_cmac_vec;
-    calculated_cmac_vec.reserve(tag.size());
-    for (const auto& byte : tag) {
-        calculated_cmac_vec.push_back(byte);
-    }
-
-    // Verify CMAC
-    if (received_cmac != calculated_cmac_vec) {
-        std::cerr << "[Sender] CMAC verification failed!\n";
-        return kNOT_OK;
-    }
-    std::cout << "[Sender] CMAC verification succeeded.\n";
 
     std::fill(buffer.begin(), buffer.end(), 0);  // Clear sensitive data
 
