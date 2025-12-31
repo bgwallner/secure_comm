@@ -78,7 +78,7 @@ int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
     std::vector<uint8_t> der = public_key.subject_public_key();
 
     if (der.size() > kMessageSize) {
-        std::cerr << "[Sender]Public key too large for message queue\n";
+        std::cerr << "[Sender] Public key too large for message queue\n";
         return kNOT_OK;
     }
 
@@ -93,7 +93,7 @@ int send_public_key(mqd_t mq, const Botan::RSA_PublicKey& public_key)
         return kNOT_OK;
     }
 
-    std::cout << "[Sender] Sent public key (" << der.size() << " bytes)\n";
+    std::cout << "[Sender] Public key sent (" << der.size() << " bytes)\n";
     return kOK;
 }
 
@@ -166,7 +166,7 @@ int receive_symmetric_key(mqd_t mq, const Botan::RSA_PrivateKey& private_key,
     std::vector<uint8_t> encrypted_data(bytes_received);
     std::memcpy(encrypted_data.data(), buffer.data(), bytes_received);
 
-    std::cout << "[Sender] Received symmetric key with appended CMAC (" << bytes_received << " bytes)\n";
+    std::cout << "[Sender] Received encrypted symmetric key (" << bytes_received << " bytes)\n";
     print_vector_hex(encrypted_data);
 
     // Copy the encrypted data with 16 bytes less for CMAC
@@ -263,17 +263,17 @@ int main() {
   unsigned int status{kNOT_OK};
   switch(message_id) {
       case kMessageIdRsaPublicKey:
-          std::cout << "[Sender] Send public key.\n";
+          std::cout << "[Sender] Send public key\n";
           status = send_public_key(mq_sender_to_receiver, public_key);
           message_id = kMessageIdSymKey;
           [[fallthrough]];
       case kMessageIdSymKey:
-          std::cout << "[Sender] Wait for symmetric key.\n";
+          std::cout << "[Sender] Wait for symmetric key...\n";
           receive_symmetric_key(mq_receiver_to_sender, private_key, symmetric_key);
           message_id = kMessageIdPeriodic;
           [[fallthrough]];
       case kMessageIdPeriodic:
-          std::cout << "[Sender] Send periodic messages.\n";
+          std::cout << "[Sender] Send periodic messages\n";
           status = send_periodic_message(mq_sender_to_receiver, symmetric_key);
           break;
       default:
