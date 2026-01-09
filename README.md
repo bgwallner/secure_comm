@@ -21,4 +21,5 @@ The pre-requisite for the example is that the exchange of the public key is done
 How to use
 ----------
 
+Ubuntu 24.04.1 LTS
 make clean && make  && ./run.sh

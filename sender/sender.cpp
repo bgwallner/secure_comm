@@ -257,7 +257,7 @@ int main() {
   std::cout << private_pem << "\n";
   std::cout << public_pem  << "\n";
 
-  std::vector<uint8_t> symmetric_key(16);
+  std::vector<uint8_t> symmetric_key(kSymKeySize);
   rng.randomize(symmetric_key.data(), symmetric_key.size());
   unsigned int message_id{kMessageIdRsaPublicKey};
   unsigned int status{kNOT_OK};

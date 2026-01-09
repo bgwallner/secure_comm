@@ -233,7 +233,7 @@ int main() {
   unsigned int message_id{kMessageIdRsaPublicKey};
   unsigned int status{kNOT_OK};
   std::unique_ptr<Botan::Public_Key> public_key;
-  std::vector<uint8_t> symmetric_key(16);
+  std::vector<uint8_t> symmetric_key(kSymKeySize);
   switch(message_id) {
       case kMessageIdRsaPublicKey:
           std::cout << "[Receiver] Wait for public key...\n";
